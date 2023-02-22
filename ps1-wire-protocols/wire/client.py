@@ -1,120 +1,285 @@
 import socket, threading
-from commands import opcodes
+import sys
 
-username = ""
+host = '0.0.0.0'
+port = 7976
 
-IP_ADDRESS = '127.0.0.1'
-PORT = 51234
+# to change colors of terminal text
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect((IP_ADDRESS, PORT))
+
+VERSION_NUMBER = '1'
+commands = {'LOGIN': '1',
+            "CREATE": '2',
+            'ENTER': '3',
+            'LOGIN_NAME': '4',
+            "CREATE_NAME": '5',
+            'DISPLAY': '6',
+            'HELP': '7',
+            'SHOW': '8',
+            'CONNECT': '9',
+            'TEXT': 'a',
+            'NOTHING': 'b',
+            'DELETE': 'c',
+            'EXIT_CHAT': 'd',
+            'SHOW_TEXT': 'e',
+            'START_CHAT': 'f'}
+
+hostname=socket.gethostname()
+IPAddr=socket.gethostbyname(hostname)
+print("Your Computer Name is:"+hostname)
+print("Your Computer IP Address is:"+IPAddr)
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)              #socket initialization
+server.bind((host, port))                                               #binding host and port to socket
+server.listen()
 
 
+# globals
+queue = {}
+USERNAMES = []
+connections = {}
+clients = {}
+LOGGED_IN = set([])
+
+# deletes a username from list of usernames, removes the association from the client, and sends the appropriate message
+def delete_account(client, message):
+    out = 'Account deleted'
+    LOGGED_IN.remove(clients[client])
+    USERNAMES.remove(clients[client])
+    queue.pop(clients[client])
+
+    # delete unread messages from this user for everyone else
+    for key in queue:
+        if clients[client] in queue[key]:
+            del queue[key][clients[client]]
+
+    clients[client] = ''
+    return (VERSION_NUMBER + commands['DELETE'] + out).encode('ascii')
 
 
+# displays the other users on the current server.
+def show(client, message):
 
-def login_message():
-    global username
-    choice = None
-    while choice != "L" and choice != "C":
-        choice = input("Enter L to login, or C to create an account: ")
-    if choice == "L":
-        username = input("Enter username: ")
-        return "login " + username
+    all_users = []
+
+    # text wildcard search logic
+    if message[4:]:
+        if '*' in message[4:]:
+            key = message[4:message.index('*')]
+            for user in USERNAMES:
+                if key in user:
+                    all_users.append(user)
+
+        elif message[4:] in USERNAMES:
+            all_users.append(message[4:])
+        else:
+            return (VERSION_NUMBER + commands['DISPLAY'] + "No users match").encode('ascii')
+    # if no wild card, return full list of users
     else:
-        username = input("Create new username: ")
-        return opcodes["createaccount"] + username
+        all_users = USERNAMES
+
+    out = ""
+    for user in all_users:
+        # Display number of unread messages from other users
+        number_unread = 0
+        if clients[client] in queue:
+            if user in queue[clients[client]]:
+                number_unread = len(queue[clients[client]][user])
+
+        if number_unread > 0: out += user + ' ('+str(number_unread)+' unread messages)' + '\n'
+        else: out += user + '\n'
+
+    return (VERSION_NUMBER + commands['DISPLAY'] + out).encode('ascii')
 
 
-# parse user's input text. Specifically deal with commands beginning with '/'
-def parse_arg(input):
-    if not input:
-        return opcodes['NOTHING'] + ''
+# displays the list of possible commands.
+def help(client, message):
+    out = 'Commands: /C [username] (connect with a user), /S (show list of other users), /H (help), /D (delete account and exit)'
+    client.send((VERSION_NUMBER + commands['DISPLAY'] + out).encode('ascii'))
 
-    input_strip = "".join(input.split())
 
-    command = 'TEXT'
-    if input_strip[0] == '/':
-        if input_strip[1] == 'C':
-            command = 'CONNECT'
-        if input_strip[1] == 'S':
-            command = 'list'
-        if input_strip[1] == 'D':
-            command = 'DELETE'
+# prompts the user for another input (only used when the user just presses 'enter' without typing anything)
+def prompt(client, message):
+    client.send((VERSION_NUMBER + commands['DISPLAY'] + '').encode('ascii'))
 
-    if command == 'TEXT':
-        return opcodes[command] + input_strip
-    elif command == 'list':
-        return opcodes[command] + input_strip
-    # if the command is not CONNECT, just send whole payload
-    elif command != 'CONNECT':
-        return opcodes[command] + ''
-    # if the command is CONNECT, send only the part of the payload which specifies which user we are connecting to
+
+# conditional logic for logging in / creating an account. Updates USERNAMES and clients global data as necessary.
+def login_username(username, client):
+    error_message = ''
+    if username[1] == commands['LOGIN_NAME']:
+        if username[2:] not in USERNAMES:
+            error_message = 'Username not found'
+        elif username[2:] in LOGGED_IN:
+            error_message = 'User currently logged in!'
+        else:
+            clients[client] = username[2:]
+            connections[username[2:]] = ''
+            LOGGED_IN.add(username[2:])
+
+    if username[1] == commands['CREATE_NAME']:
+        if username[2:] in USERNAMES:
+            error_message = 'Username taken'
+        elif ' ' in username[2:]:
+            error_message = "Your username can not have spaces"
+        elif '*' in username[2:]:
+            error_message = "You username can not have '*'"
+        else:
+            USERNAMES.append(username[2:])
+            clients[client] = username[2:]
+            connections[username[2:]] = ''
+            queue[username[2:]] = {}
+            LOGGED_IN.add(username[2:])
+    return error_message
+
+
+# called whenever user submits a "non-command". If connected to another user, send them the chat
+def text(client, message):
+
+    sender = client
+    receiver = connections[clients[client]] # username
+
+    # prompt if not connected to anyone
+    if not receiver:
+        client.send((VERSION_NUMBER + commands['DISPLAY'] + 'You currently are not connected to anyone. Type /H for help.  ').encode('ascii'))
+        return
+
+    # find the correct address to send messages to
+    receiver_address = ''
+    for key, val in clients.items():
+        if val == receiver:
+            receiver_address = key
+            break
+
+    # if users are mutually connected, send message directly
+    if (receiver in connections) and (connections[receiver] == clients[sender]): # comparing usernames
+            receiver_address.send((VERSION_NUMBER + commands['SHOW_TEXT'] + bcolors.OKBLUE + clients[client] + ': ' + bcolors.ENDC+ message[2:]).encode('ascii'))
+
     else:
-        return opcodes[command] + input_strip[2:]
+        # Tell client that reciever is not in chat anymore, but sent messages will be saved for htem
+        # store the messages in the queue
+        if receiver in queue:
+            if clients[sender] in queue[receiver]:
+                queue[receiver][clients[sender]].append(message[2:])
+            else: queue[receiver][clients[sender]] = [message[2:]]
+        else:
+            queue[receiver] = {clients[sender]:[message[2:]]}
 
-# send_text command only used when user is engaged in a chatroom. In this case, '/E' triggers chatroom exit.
-def send_text(input):
-    if input == '/E':
-        return opcodes['EXIT_CHAT'] + 'end'
-    return opcodes['TEXT'] + input
+        client.send((VERSION_NUMBER + commands['SHOW_TEXT'] + 'The recipient has disconnected. Your chats will be saved. ').encode('ascii'))
 
 
-def receive():
-    global username
+# conditional logic for connecting to another user. Updates connections accordingly.
+def connect(client, message):
+    if message[2:] not in USERNAMES:
+        client.send((VERSION_NUMBER + commands['DISPLAY'] + 'user not found. Please try again').encode('ascii'))
+    else:
+        # do not allow user to connect to oneself.
+        if clients[client] == message[2:]:
+            client.send((VERSION_NUMBER + commands['DISPLAY'] + 'You cannot connect to yourself! Please try again ').encode('ascii'))
+        else:
+            connections[clients[client]] = message[2:]
+            client.send((VERSION_NUMBER + commands['START_CHAT'] + 'You are now connected to ' + message[2:] + '! You may now begin chatting. To exit, type "/E"').encode('ascii'))
+            out = ''
+
+            # if the user has unread messages from the new user they've connected to, display these messages
+            if clients[client] in queue:
+                if message[2:] in queue[clients[client]]:
+                    for m in queue[clients[client]][message[2:]]:
+                        out += bcolors.OKBLUE + message[2:] + ': ' + bcolors.ENDC + m + '\n'
+                    # empty the queue after messages have been displayed
+                    queue[clients[client]][message[2:]] = []
+
+            client.send((VERSION_NUMBER + commands['SHOW_TEXT'] + out).encode('ascii'))
+
+
+# display notifications for unread messages from other users upon logging in
+def check_unread_messages(client):
+    user = clients[client]
+    out = ""
+    for key, val in queue[user].items():
+        out += 'You have unread messages from: ' + str(key) + '\n'
+    return out
+
+
+# conditional logic for disconnecting from another user. Updates connections accordingly. Prompts user for new connection.
+def exit(client, message):
+    connections[clients[client]] = ''
+    return (VERSION_NUMBER + commands['DISPLAY'] + 'Commands: /C [username] (connect with a user), /S (show list of other users), /H (help), /D (delete account and exit)').encode('ascii')
+
+
+def handle(client):
     while True:
+        # for debugging purposes
+        print('*'*80)
+        print('clients:', clients)
+        print('users:', USERNAMES)
+        print('connections:', connections)
+        print('queue:', queue)
 
         try:
-            message = client.recv(1024).decode('ascii')
-            if message[0] == opcodes['INPUT']:
-                if message[1:]:
-                    print(message[1:])
-                m = login_message()
-                client.send(m.encode('ascii'))
+            # wait for messages
+            message = client.recv(1024).decode()
+            # print("size of transfer buffer: " + str(sys.getsizeof(message)))
 
-            elif message[0] == opcodes['DELETE']:
-                if message[1:]:
-                    print(message[1:])
-                return
-
-            elif message[0] == opcodes['SHOW']:
-                if message[1:]: print(message[1:])
-                inp = input(":")
-                m = parse_arg(inp)
-                client.send(m.encode('ascii'))
-
-
-            elif message[1] == opcodes['SHOW']:
-                if message[1:]: print(message[1:])
-
-
-            # we know we are connected to another user/in a chat room when we receive the "TEXT" command
-            elif message[0] == opcodes['startchat']:
-                    if message[1:]: print(message[1:])
-                    write_thread = threading.Thread(target=write) #sending messages
-                    write_thread.start()
-
-
-            # I assume when receiving chats from other users, message should be directly printed here. Not sure if it will be this easy in practice.
-            # a new color can be toggled for received chats by serverside.
+            # command conditionals
+            if message[1] == commands['CONNECT']:
+                connect(client, message)
+            elif message[1] == commands['TEXT']:
+                text(client, message)
+            elif message[1] == commands['SHOW']:
+                client.send(show(client, message))
+            elif message[1] == commands['HELP']:
+                help(client, message)
+            elif message[1] == commands['DELETE']:
+                client.send(delete_account(client, message))
+            elif message[1] == commands['EXIT_CHAT']:
+                client.send(exit(client, message))
             else:
-                if message[1:]:
-                    print(message[1:])
-        except Exception as e:
-            print("An error occured!")
-            print(e)
+                prompt(client, message)
+
+        except:
+            LOGGED_IN.remove(clients[client])
+            if client in connections:
+                connections.pop(client)
+            clients.pop(client)
             client.close()
             break
 
 
-
-def write():
+# after starting the server, allows server to accept clients  
+def receive():
     while True:
-        inp = input()
-        m = send_text(inp)
-        client.send(m.encode('ascii'))
-        if m[0] == opcodes['EXIT_CHAT']:
-            return
+        client, address = server.accept()
+        clients[client] = ''
+        error_message = ''
+        username = ''
+        print("Connected with {}".format(str(address)))
+        # handle logging in before starting a new thread for this user
+        while True:
+            client.send((VERSION_NUMBER + commands['ENTER'] + error_message).encode('ascii'))
+            username = client.recv(1024).decode('ascii')
+            error_message = login_username(username, client)
+            # if no error, break out of loop
+            if error_message == '':
+                break
 
-receive_thread = threading.Thread(target=receive) #receiving multiple messages
-receive_thread.start()
+        print("Username is {}".format(username[2:]))
+        client.send((VERSION_NUMBER + commands['DISPLAY'] + \
+            'Logged in! Commands: /C [username] (connect with a user), /S (show list of other users), /H (help), /D (delete account and exit)\n' + check_unread_messages(client)).encode('ascii'))
+
+        # begin handle thread
+        thread = threading.Thread(target=handle, args=(client,))
+        thread.start()
+
+
+# start server
+receive()
