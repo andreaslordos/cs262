@@ -1,7 +1,6 @@
 import socket, threading
 import sys
 from colors import *
-from time import sleep
 
 IP_ADDR = '0.0.0.0'
 PORT = 7978
@@ -137,7 +136,8 @@ class ChatClient:
                     return
                 
                 elif message[1] == commands['START_CHAT']:
-                    pass
+                    write_thread = threading.Thread(target=self.write)
+                    write_thread.start()
                 
                 elif message[1] == commands['ERROR']:
                     pass
@@ -157,7 +157,7 @@ class ChatClient:
         while True:
             text = input()
             req = self.handle_text(text)
-            client.send(req.encode('utf-8'))
+            self.client.send(req.encode('utf-8'))
             if req[1] == commands['EXIT_CHAT']:
                 return
 

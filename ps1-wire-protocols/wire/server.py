@@ -1,6 +1,7 @@
 import socket, threading
 from colors import *
 from time import sleep
+import traceback
 
 HOST = '0.0.0.0'
 PORT = 7978
@@ -67,12 +68,12 @@ class ChatServer:
         For debugging purposes
         Shows server's global variables
         '''
-        print('*'*80)
-        print('clients:', self.clients)
-        print('users:', self.usernames)
-        print('connections:', self.connections)
-        print('queue:', self.queued_msgs)
-        print('logged_in:', self.logged_in)
+        print('='*80)
+        print('Clients:', self.clients)
+        print('Users:', self.usernames)
+        print('Connections:', self.connections)
+        print('Queued Messages:', self.queued_msgs)
+        print('Logged in:', self.logged_in)
 
     
     def handle(self, client: socket.socket) -> None:
@@ -81,43 +82,61 @@ class ChatServer:
 
         while True:
             try:
-                self.prompt(client)
+                print(f"Queued msgs before: {self.queued_msgs}")
+                if self.connections[self.clients[client]] == '':
+                    self.prompt(client)
+                
                 message = client.recv(1024).decode('utf-8')
                 
                 if not message:
-                    username = self.clients[client] 
+                    username = self.clients[client]
+                    if self.connections[username] != '':
+                        self.disconnect(client) 
                     self.logout(client, username)
                     self.remove_client(client)
                     print(strWarning("Client disconnected after logging in."))
                     return
 
-                print(f"Received from client: {message}")
+                #print(f"Received from client: {message}")
 
                 if message[1] == commands['HELP']:
                     self.help(client)
+
                 elif message[1] == commands['LIST_USERS']:
                     self.list_users(client)
+
                 elif message[1] == commands['CONNECT']:
                     if len(message) < 3:
                         self.show_client(client, strWarning("Username is missing!"))
                         continue
                     username = message[2:]
                     self.connect(client, username)
+
                 elif message[1] == commands['TEXT']:
-                    pass
+                    if len(message) < 3:
+                        self.show_client(client, strWarning("Message is missing!"))
+                        continue
+                    self.send_message(client, message[2:])
+
+                elif message[1] == commands['EXIT_CHAT']:
+                    self.disconnect(client)
+
                 elif message[1] == commands['DELETE']:
                     self.delete_account(client)
                     return
-                elif message[1] == commands['EXIT_CHAT']:
-                    pass
+
                 elif message[1] == commands['QUIT']:
                     self.close_client(client)
                     return
+
                 elif message[1] == commands['ERROR']:
                     pass
+                
+                print(f"Queued msgs after: {self.queued_msgs}\n")
 
             except Exception as e:
                 print(f"Error from handle function: {strFail(repr(e))}")
+                print(traceback.format_exc())
                 break
 
 
@@ -352,12 +371,75 @@ Here are the commands you can use:
 
         # Check if user has any queued messages from other user
         if other_user in self.queued_msgs[username]:
-            msgs = f"{strCyan('You have queued messages from')} {other_user}{strCyan(':')}\n"
-            for msg in self.queued_msgs[username][other_user]:
-                msg += text_message_from(other_user, msg) + '\n'
+            if len(self.queued_msgs[username][other_user]) > 0:
+                unread_msgs = f"{strWarning('You have queued messages from')} {other_user}{strWarning(':')}\n"
+                for msg in self.queued_msgs[username][other_user]:
+                    unread_msgs += text_message_from(other_user, msg) + '\n'
 
-            self.queued_msgs[username][other_user] = [] # clear queued messages
-            self.show_client(client, msgs) # display queued messages
+                self.queued_msgs[username][other_user] = [] # clear queued messages
+                print(unread_msgs)
+                self.show_client(client, unread_msgs) # display queued messages
+                sleep(0.1)
+
+        # Check if connection is mutual
+        if self.connections[other_user] == username:
+            # Alert user that other user is connected to them
+            self.show_client(client, strGreen(f"{other_user} is connected to you!"))
+            for client, user in self.clients.items():
+                if user == other_user:
+                    other_client = client
+                    break
+            # Alert other user that user just connected to them
+            self.show_client(other_client, strGreen(f"{username} has connected!"))
+            return
+        
+        if self.connections[other_user] != username:
+            self.show_client(client, strWarning(f"{other_user} is not connected to you. Sent messages will be queued!"))
+            sleep(0.1)
+
+
+    def disconnect(self, client: socket.socket) -> None:
+        # Disconnect from other user
+        username = self.clients[client]
+        other = self.connections[username]
+        self.connections[username] = ''
+        self.show_client(client, strCyan(f"Disconnected from {other}."))
+
+        # Alert other that user has disconnected
+        if self.connections[other] == username:
+            for client, user in self.clients.items():
+                if user == other:
+                    other_client = client
+                    break
+            self.show_client(other_client, strWarning(f"{username} has disconnected. Sent messages will be queued until they reconnect!"))
+
+
+    def send_message(self, client: socket.socket, message: str) -> None:
+        '''
+        Sends message to other user
+        '''
+        username = self.clients[client]
+        other = self.connections[username]
+
+        # Check if user is connected to another user
+        if not other:
+            self.show_client(client, strWarning("You are not connected to another user. Type /H for list of commands."))
+            return
+
+        # Queue message if other user is not mutually connected
+        if self.connections[other] != username:
+            if username not in self.queued_msgs[other]:
+                self.queued_msgs[other][username] = [] # create new list for queued messages
+            self.queued_msgs[other][username].append(message)
+            return
+
+        # Send message to other user
+        for client, user in self.clients.items():
+            if user == other:
+                other_client = client
+                break
+
+        self.show_client(other_client, text_message_from(username, message))
 
 
 if __name__ == '__main__':
