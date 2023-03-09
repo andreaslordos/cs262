@@ -178,11 +178,25 @@ class ChatServer:
                     thread = threading.Thread(target=self.handle, args=(client,))
                     thread.start()
             
+            except KeyboardInterrupt:
+                print(strWarning("Server stopped by user."))
+                quit_clients = VERSION_NUMBER + commands['QUIT'] + ''
+                self.broadcast(quit_clients)
+                self.server.close()
+                break
+
             except Exception as e:
                 print(f"Error from receive function: {strFail(repr(e))}")
                 self.show_state()
 
-    ### Helper functions ### 
+    ### Helper functions ###
+    def broadcast(self, message: str) -> None:
+        '''
+        Sends message to all clients
+        '''
+        for client in self.clients:
+            client.send(message.encode('utf-8'))
+
 
     def add_client(self, client: socket.socket) -> None:
         '''
@@ -455,6 +469,8 @@ Here are the commands you can use:
         if len(message) < 3:
             self.show_client(client, strWarning("Message is missing!"))
             return
+        
+        message = message[2:]
 
         # Queue message if other user is not mutually connected
         if self.connections[other] != username:
