@@ -2,10 +2,11 @@ import socket, threading
 from colors import *
 from time import sleep
 import traceback
+import fnmatch
 
 HOST = '0.0.0.0'
 PORT = 7978
-VERSION_NUMBER = '8'
+VERSION_NUMBER = '1'
 
 '''
 WIRE PROTOCOL
@@ -13,14 +14,10 @@ WIRE PROTOCOL
     1. Version Number (1 byte)
     2. Command (1 byte)
     3. Data (variable length)
+
+REQUEST FORMAT: "<VERSION NUMBER><COMMAND CODE><DATA>"
 '''
 
-
-'''
-Might want to add logout command
-Would need to restructure the initial prompting for login/register
-so that it's accessible after logging out.
-'''
 
 commands = {'LOGIN_PROMPT': '1', # Prompt for login/create account
             'LOGIN': '2', # Request for logging in
@@ -36,11 +33,13 @@ commands = {'LOGIN_PROMPT': '1', # Prompt for login/create account
             'PROMPT': 'c', # Prompt client for response
             'START_CHAT': 'd', # Response to client's request to connect to user
             'QUIT': 'e', # Request for quitting application
-            'ERROR': 'f', # Error message
 }
 
 
 def text_message_from(username: str, message: str) -> str:
+    '''
+    Returns formatted text message, with username in cyan
+    '''
     return f"{strCyan(username)}: {message}"
 
 
@@ -77,17 +76,25 @@ class ChatServer:
 
     
     def handle(self, client: socket.socket) -> None:
+        '''
+        Handles client requests
+        New thread for each client
+        '''
         
-        self.show_state()
+        self.show_state() # For debugging purposes
 
         while True:
             try:
-                print(f"Queued msgs before: {self.queued_msgs}")
+                
+                # Prompt client to make a request if they are not
+                # in connected state. If in connected state, handled
+                # by write thread in client file.
                 if self.connections[self.clients[client]] == '':
-                    self.prompt(client)
+                    self.prompt(client) # Prompt client to make a request
                 
                 message = client.recv(1024).decode('utf-8')
                 
+                # Handle client dropping connection
                 if not message:
                     username = self.clients[client]
                     if self.connections[username] != '':
@@ -97,13 +104,14 @@ class ChatServer:
                     print(strWarning("Client disconnected after logging in."))
                     return
 
-                #print(f"Received from client: {message}")
-
+                # Handle different client requests
                 if message[1] == commands['HELP']:
                     self.help(client)
 
                 elif message[1] == commands['LIST_USERS']:
-                    self.list_users(client)
+                    query = ''
+                    if len(message) >= 3: query = message[2:]
+                    self.list_users(client, query)
 
                 elif message[1] == commands['CONNECT']:
                     if len(message) < 3:
@@ -113,26 +121,18 @@ class ChatServer:
                     self.connect(client, username)
 
                 elif message[1] == commands['TEXT']:
-                    if len(message) < 3:
-                        self.show_client(client, strWarning("Message is missing!"))
-                        continue
-                    self.send_message(client, message[2:])
+                    self.send_message(client, message)
 
                 elif message[1] == commands['EXIT_CHAT']:
                     self.disconnect(client)
 
                 elif message[1] == commands['DELETE']:
                     self.delete_account(client)
-                    return
+                    return # Close client connection
 
                 elif message[1] == commands['QUIT']:
                     self.close_client(client)
-                    return
-
-                elif message[1] == commands['ERROR']:
-                    pass
-                
-                print(f"Queued msgs after: {self.queued_msgs}\n")
+                    return # Close client connection
 
             except Exception as e:
                 print(f"Error from handle function: {strFail(repr(e))}")
@@ -141,6 +141,10 @@ class ChatServer:
 
 
     def receive(self) -> None:
+        '''
+        Accepts incoming connections.
+        Handles login/register before creating thread.
+        '''
         while True:
             try:
                 client, address = self.server.accept()
@@ -203,7 +207,6 @@ class ChatServer:
         self.queued_msgs[username] = {}
 
 
-    # STILL NEED TO TEST THAT QUEUED MESSAGES ARE DELETED
     def remove_user(self, username: str) -> None:
         '''
         Removes username from usernames list and removes object for user in connections list.
@@ -251,7 +254,7 @@ class ChatServer:
         sleep(0.1)
 
 
-    def handle_login_register(self, client: socket, username: str) -> str:
+    def handle_login_register(self, client: socket.socket, username: str) -> str:
         '''
         Handles initial login/register prompt.
         Takes in client and username.
@@ -296,6 +299,9 @@ class ChatServer:
 
 
     def prompt(self, client: socket.socket) -> None:
+        '''
+        Prompts client for input
+        '''
         client.send((VERSION_NUMBER + commands['PROMPT'] + '').encode('utf-8'))
     
     ### Wrapper functions for commands ### 
@@ -316,14 +322,24 @@ Here are the commands you can use:
         self.show_client(client, message)
 
 
-    def list_users(self, client: socket.socket) -> None:
+    def list_users(self, client: socket.socket, query: str) -> None:
         '''
-        Lists all users
+        Lists all users.
+        If query is provided, lists all users that match query.
         '''
 
         message = 'Users:\n'
 
-        for username in self.usernames:
+        if not query: query = '*' # if no query, list all users
+
+        # Check if query is valid -- must be wildcard at beginning or end
+        if not query.startswith('*') and not query.endswith('*'):
+            self.show_client(client, strWarning("Wildcard must be at the beginning or end of query."))
+            return
+
+        # Use fnmatch to filter usernames
+        filtered = fnmatch.filter(self.usernames, query)
+        for username in filtered:
             message += username + '\n'
 
         self.show_client(client, message)
@@ -355,6 +371,11 @@ Here are the commands you can use:
 
 
     def connect(self, client: socket.socket, other_user: str) -> None:
+        '''
+        Connects client to other user
+        If successful, allows client to send messages to other user
+        Messages added to queue if connection is not mutual
+        '''
         # Check if requested user exists
         if other_user not in self.usernames:
             self.show_client(client, strWarning("User does not exist"))
@@ -399,6 +420,9 @@ Here are the commands you can use:
 
 
     def disconnect(self, client: socket.socket) -> None:
+        '''
+        Disconnects client from other user
+        '''
         # Disconnect from other user
         username = self.clients[client]
         other = self.connections[username]
@@ -416,7 +440,8 @@ Here are the commands you can use:
 
     def send_message(self, client: socket.socket, message: str) -> None:
         '''
-        Sends message to other user
+        Sends message to other user.
+        Only sends message if client is connected to other user.
         '''
         username = self.clients[client]
         other = self.connections[username]
@@ -424,6 +449,11 @@ Here are the commands you can use:
         # Check if user is connected to another user
         if not other:
             self.show_client(client, strWarning("You are not connected to another user. Type /H for list of commands."))
+            return
+
+        # Check if message is empty
+        if len(message) < 3:
+            self.show_client(client, strWarning("Message is missing!"))
             return
 
         # Queue message if other user is not mutually connected
