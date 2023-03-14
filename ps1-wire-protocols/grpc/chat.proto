@@ -33,7 +33,6 @@ service ChatService {
   rpc ChatStream (User) returns (stream ChatMessage) {} // Listening stream for client
   rpc SendMessage (ChatMessage) returns (Empty) {}
   rpc Delete (User) returns (Empty) {}
-  rpc Quit (Request) returns (Empty) {}
 }
 
 

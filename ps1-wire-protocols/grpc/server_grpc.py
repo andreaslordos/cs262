@@ -2,6 +2,7 @@ from concurrent import futures
 import logging
 import fnmatch
 from colors import *
+from time import sleep
 
 import grpc
 import chat_pb2
@@ -12,6 +13,7 @@ port = 7976
 
 logging.basicConfig(format='[%(asctime)-15s]: %(message)s', level=logging.INFO)
 
+
 class ChatServer(chat_pb2_grpc.ChatService):
     def __init__(self) -> None:
         self.usernames = [] # list of usernames
@@ -19,9 +21,6 @@ class ChatServer(chat_pb2_grpc.ChatService):
         self.connections = {} # key = username, value = username, key connected to value
         self.logged_in = set([]) # set of users that are logged in
 
-    """
-        The chat service definition.
-    """
 
     def show_state(self) -> None:
         '''
@@ -45,18 +44,6 @@ class ChatServer(chat_pb2_grpc.ChatService):
         self.user_info[username]["queue"] = []
         self.connections[username] = ''
 
-
-    def remove_user(self, username: str) -> None:
-        '''
-        Removes username from usernames list and removes object for user in connections list.
-        '''
-        self.usernames.remove(username)
-
-        # TODO: need to disconnect everyone else that is connected to this user
-
-        del self.connections[username]
-        
-                
 
     def send_msg_to_client(self, username: str, msg: str) -> None:
         '''
@@ -130,7 +117,8 @@ class ChatServer(chat_pb2_grpc.ChatService):
         if not err:
             err = f"{username} logged out."
             self.logged_in.remove(username)
-            if self.connections[username]: self.connections[username] = ''
+            if self.connections[username]: 
+                self.Disconnect(chat_pb2.User(name=username), context=context)
             res.name = username
 
         logging.info(err)
@@ -292,8 +280,11 @@ class ChatServer(chat_pb2_grpc.ChatService):
         Any messages added to "messages" object will be immediately sent to user
         '''
         while request.name in self.logged_in:
-            while self.user_info[request.name]["messages"]:
-                yield self.user_info[request.name]["messages"].pop(0)
+            try:
+                while self.user_info[request.name]["messages"]:
+                    yield self.user_info[request.name]["messages"].pop(0)
+            except:
+                continue
 
 
     def SendMessage(self, request: chat_pb2.ChatMessage, context) -> chat_pb2.RequestResponse:
@@ -370,16 +361,6 @@ class ChatServer(chat_pb2_grpc.ChatService):
         # self.show_state()
 
         return chat_pb2.Empty()
-
-
-    def Quit(self, request: chat_pb2.User, context) -> chat_pb2.Empty:
-        '''
-
-        '''
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
 
 
 def serve():

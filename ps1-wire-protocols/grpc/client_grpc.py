@@ -179,7 +179,7 @@ class ChatClient:
         Helper function to display text to terminal in a consistent format
         <sender> message
         '''
-        if sender=='server': print(f'<{strBlue(sender)}> {message}')
+        if sender in ['server', 'client']: print(f'<{strBlue(sender)}> {message}')
         else: print(f"{strBlue(sender + ':')} {message}")
 
 
@@ -237,6 +237,7 @@ R <username> - Register
 
         self.is_logged_in = False
         self.__user = None
+        self.__listening_stream = None
 
         self.display(strWarning('Logging out...'), 'server')
 
@@ -324,9 +325,9 @@ R <username> - Register
         '''
         user = chat_pb2.User(name=self.username)
         self.__stub.Delete(user)
-
         self.is_logged_in = False
         self.is_connected = False
+        self.__listening_stream = None
         self.__user = None
         self.display(strWarning('Account deleted.'), 'server')
 
