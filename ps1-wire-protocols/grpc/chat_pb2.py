@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nchat.proto\x12\nhelloworld\"\x07\n\x05\x45mpty\"\"\n\x0fRequestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1e\n\x0b\x43hatMessage\x12\x0f\n\x07message\x18\x01 \x01(\t\"!\n\x0eMessageRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1e\n\x0bUserRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x14\n\x04User\x12\x0c\n\x04name\x18\x01 \x01(\t2\xc0\x03\n\x0b\x43hatService\x12\x46\n\x0bGetMessages\x12\x1a.helloworld.MessageRequest\x1a\x17.helloworld.ChatMessage\"\x00\x30\x01\x12\x41\n\x0bSendMessage\x12\x17.helloworld.ChatMessage\x1a\x17.helloworld.ChatMessage\"\x00\x12\x39\n\x08GetUsers\x12\x17.helloworld.UserRequest\x1a\x10.helloworld.User\"\x00\x30\x01\x12\x38\n\x05Login\x12\x10.helloworld.User\x1a\x1b.helloworld.RequestResponse\"\x00\x12\x39\n\x06Logout\x12\x10.helloworld.User\x1a\x1b.helloworld.RequestResponse\"\x00\x12;\n\x08Register\x12\x10.helloworld.User\x1a\x1b.helloworld.RequestResponse\"\x00\x12\x39\n\x06\x44\x65lete\x12\x10.helloworld.User\x1a\x1b.helloworld.RequestResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nchat.proto\x12\nhelloworld\"\x07\n\x05\x45mpty\"\x1a\n\x07Request\x12\x0f\n\x07message\x18\x01 \x01(\t\"\"\n\x0fRequestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1c\n\x0bSearchQuery\x12\r\n\x05query\x18\x01 \x01(\t\"$\n\x0fListOfUsernames\x12\x11\n\tusernames\x18\x01 \x03(\t\":\n\x0b\x43hatMessage\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\n\n\x02to\x18\x02 \x01(\t\x12\x0e\n\x06sender\x18\x03 \x01(\t\"\x14\n\x04User\x12\x0c\n\x04name\x18\x01 \x01(\t2\xab\x04\n\x0b\x43hatService\x12-\n\x05Login\x12\x10.helloworld.User\x1a\x10.helloworld.User\"\x00\x12.\n\x06Logout\x12\x10.helloworld.User\x1a\x10.helloworld.User\"\x00\x12\x30\n\x08Register\x12\x10.helloworld.User\x1a\x10.helloworld.User\"\x00\x12\x42\n\x08GetUsers\x12\x17.helloworld.SearchQuery\x1a\x1b.helloworld.ListOfUsernames\"\x00\x12\x36\n\x07\x43onnect\x12\x17.helloworld.ChatMessage\x1a\x10.helloworld.User\"\x00\x12\x32\n\nDisconnect\x12\x10.helloworld.User\x1a\x10.helloworld.User\"\x00\x12;\n\nChatStream\x12\x10.helloworld.User\x1a\x17.helloworld.ChatMessage\"\x00\x30\x01\x12;\n\x0bSendMessage\x12\x17.helloworld.ChatMessage\x1a\x11.helloworld.Empty\"\x00\x12/\n\x06\x44\x65lete\x12\x10.helloworld.User\x1a\x11.helloworld.Empty\"\x00\x12\x30\n\x04Quit\x12\x13.helloworld.Request\x1a\x11.helloworld.Empty\"\x00\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'chat_pb2', globals())
@@ -22,16 +22,18 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._options = None
   _EMPTY._serialized_start=26
   _EMPTY._serialized_end=33
-  _REQUESTRESPONSE._serialized_start=35
-  _REQUESTRESPONSE._serialized_end=69
-  _CHATMESSAGE._serialized_start=71
-  _CHATMESSAGE._serialized_end=101
-  _MESSAGEREQUEST._serialized_start=103
-  _MESSAGEREQUEST._serialized_end=136
-  _USERREQUEST._serialized_start=138
-  _USERREQUEST._serialized_end=168
-  _USER._serialized_start=170
-  _USER._serialized_end=190
-  _CHATSERVICE._serialized_start=193
-  _CHATSERVICE._serialized_end=641
+  _REQUEST._serialized_start=35
+  _REQUEST._serialized_end=61
+  _REQUESTRESPONSE._serialized_start=63
+  _REQUESTRESPONSE._serialized_end=97
+  _SEARCHQUERY._serialized_start=99
+  _SEARCHQUERY._serialized_end=127
+  _LISTOFUSERNAMES._serialized_start=129
+  _LISTOFUSERNAMES._serialized_end=165
+  _CHATMESSAGE._serialized_start=167
+  _CHATMESSAGE._serialized_end=225
+  _USER._serialized_start=227
+  _USER._serialized_end=247
+  _CHATSERVICE._serialized_start=250
+  _CHATSERVICE._serialized_end=805
 # @@protoc_insertion_point(module_scope)

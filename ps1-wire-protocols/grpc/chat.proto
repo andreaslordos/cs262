@@ -14,6 +14,7 @@
 
 
 
+// Compile using:
 // python3 -m grpc_tools.protoc -I./ --python_out=. --pyi_out=. --grpc_python_out=. ./chat.proto
 
 syntax = "proto3";
@@ -23,32 +24,41 @@ package helloworld;
 
 // The chat service definition.
 service ChatService {
-  rpc GetMessages (MessageRequest) returns (stream ChatMessage) {}
-  rpc SendMessage (ChatMessage) returns (ChatMessage) {}
-  rpc GetUsers (UserRequest) returns (stream User) {}
-  rpc Login (User) returns (RequestResponse) {}
-  rpc Logout (User) returns (RequestResponse) {}
-  rpc Register (User) returns (RequestResponse) {}
-  rpc Delete (User) returns (RequestResponse) {}
+  rpc Login (User) returns (User) {}
+  rpc Logout (User) returns (User) {}
+  rpc Register (User) returns (User) {}
+  rpc GetUsers (SearchQuery) returns (ListOfUsernames) {}
+  rpc Connect (ChatMessage) returns (User) {} // Connect and disconnect take in ChatMessage as request type because that has sender and recipient fields
+  rpc Disconnect (User) returns (User) {}
+  rpc ChatStream (User) returns (stream ChatMessage) {} // Listening stream for client
+  rpc SendMessage (ChatMessage) returns (Empty) {}
+  rpc Delete (User) returns (Empty) {}
+  rpc Quit (Request) returns (Empty) {}
 }
 
 
 message Empty {}
 
+message Request {
+  string message = 1;
+}
+
 message RequestResponse {
   bool success = 1;
 }
 
+message SearchQuery {
+  string query = 1;
+}
+
+message ListOfUsernames {
+  repeated string usernames = 1;
+}
+
 message ChatMessage {
   string message = 1;
-}
-
-message MessageRequest {
-  string message = 1;
-}
-
-message UserRequest {
-  string message = 1;
+  string to = 2;
+  string sender = 3;
 }
 
 message User {
