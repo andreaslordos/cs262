@@ -5,7 +5,7 @@ import traceback
 import fnmatch
 
 HOST = '0.0.0.0'
-PORT = 7978
+PORT = 7980
 VERSION_NUMBER = '1'
 
 '''
@@ -347,9 +347,10 @@ Here are the commands you can use:
         if not query: query = '*' # if no query, list all users
 
         # Check if query is valid -- must be wildcard at beginning or end
-        if not query.startswith('*') and not query.endswith('*'):
-            self.show_client(client, strWarning("Wildcard must be at the beginning or end of query."))
-            return
+        if '*' in query:
+            if not query.startswith('*') and not query.endswith('*'):
+                self.show_client(client, strWarning("Wildcard must be at the beginning or end of query."))
+                return
 
         # Use fnmatch to filter usernames
         filtered = fnmatch.filter(self.usernames, query)
@@ -375,10 +376,23 @@ Here are the commands you can use:
         '''
         Deletes account and closes client connection
         '''
-        username = self.clients[client] 
+        username = self.clients[client]
+
         self.logout(client, username)
         self.remove_client(client)
         self.remove_user(username)
+
+        # Disconnect other user if connected
+        for other in self.connections:
+            # find other user that is connected to this user
+            if self.connections[other] == username:
+                # find client of other user
+                for conn, user in self.clients.items():
+                    if user == other:
+                        other_client = conn
+                        break
+                # disconnect other user
+                self.disconnect(other_client)
         
         self.show_client(client, strCyan("Account deleted. Quitting application..."))
         client.send((VERSION_NUMBER + commands['QUIT'] + '').encode('utf-8'))
@@ -403,7 +417,7 @@ Here are the commands you can use:
 
         self.connections[username] = other_user
         client.send((VERSION_NUMBER + commands['START_CHAT'] + other_user).encode('utf-8'))
-
+        sleep(0.1)
         # Check if user has any queued messages from other user
         if other_user in self.queued_msgs[username]:
             if len(self.queued_msgs[username][other_user]) > 0:
@@ -412,9 +426,7 @@ Here are the commands you can use:
                     unread_msgs += text_message_from(other_user, msg) + '\n'
 
                 self.queued_msgs[username][other_user] = [] # clear queued messages
-                print(unread_msgs)
                 self.show_client(client, unread_msgs) # display queued messages
-                sleep(0.1)
 
         # Check if connection is mutual
         if self.connections[other_user] == username:
@@ -428,10 +440,9 @@ Here are the commands you can use:
             self.show_client(other_client, strGreen(f"{username} has connected!"))
             return
         
-        if self.connections[other_user] != username:
+        else:
             self.show_client(client, strWarning(f"{other_user} is not connected to you. Sent messages will be queued!"))
-            sleep(0.1)
-
+            
 
     def disconnect(self, client: socket.socket) -> None:
         '''
@@ -444,12 +455,13 @@ Here are the commands you can use:
         self.show_client(client, strCyan(f"Disconnected from {other}."))
 
         # Alert other that user has disconnected
-        if self.connections[other] == username:
-            for client, user in self.clients.items():
-                if user == other:
-                    other_client = client
-                    break
-            self.show_client(other_client, strWarning(f"{username} has disconnected. Sent messages will be queued until they reconnect!"))
+        if other in self.usernames:
+            if self.connections[other] == username:
+                for client, user in self.clients.items():
+                    if user == other:
+                        other_client = client
+                        break
+                self.show_client(other_client, strWarning(f"{username} has disconnected. Sent messages will be queued until they reconnect!"))
 
 
     def send_message(self, client: socket.socket, message: str) -> None:

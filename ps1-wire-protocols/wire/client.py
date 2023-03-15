@@ -4,7 +4,7 @@ from colors import * # this is a custom module that I wrote to make printing col
 
 
 IP_ADDR = '0.0.0.0'
-PORT = 7978
+PORT = 7980
 VERSION_NUMBER = '1'
 
 
@@ -141,6 +141,7 @@ class ChatClient:
 
                 # Quits application
                 elif message[1] == commands['QUIT']:
+                    if message[2:]: print(message[2:])
                     self.client.close()
                     return
                 
@@ -180,5 +181,15 @@ class ChatClient:
 
 if __name__ == '__main__':
     client = ChatClient(IP_ADDR, PORT)
-    receive_thread = threading.Thread(target=client.receive)
-    receive_thread.start()
+    try:
+        receive_thread = threading.Thread(target=client.receive)
+        receive_thread.start()
+
+    except KeyboardInterrupt:
+        print(strWarning('KeyboardInterrupt'))
+        client.client.close()
+        sys.exit()
+
+    except Exception as e:
+        print(strFail(repr(e)))
+        client.client.close()
